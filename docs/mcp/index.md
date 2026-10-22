@@ -1,39 +1,38 @@
 # Model Context Protocol
 
-`oterm` has support for Anthropic's open-source [Model Context Protocol](https://modelcontextprotocol.io). While Ollama does not yet directly support the protocol, `oterm` attempts to bridge [MCP servers](https://github.com/modelcontextprotocol/servers) with Ollama.
+`oterm` has support for Anthropic's open-source [Model Context Protocol](https://modelcontextprotocol.io). It connects to [MCP servers](https://github.com/modelcontextprotocol/servers) and exposes their tools to whichever model you're chatting with.
 
-To add an MCP server to `oterm`, simply add the server shim to oterm's [config.json](../app_config.md). The following MCP transports are supported
+Add MCP servers under the `mcpServers` key in `oterm`'s [config.json](../app_config.md). The schema matches the convention used by Claude Desktop, Cursor, and pydantic-ai, so you can copy a config block between hosts.
 
-### Supported MCP Features
-#### Tools
-By transforming [MCP tools](https://modelcontextprotocol.io/docs/concepts/tools) into Ollama tools `oterm` provides full support.
+!!! warning "Breaking changes from earlier oterm releases"
+    The MCP integration was rewritten on top of pydantic-ai's MCP support. If you're upgrading, your existing `mcpServers` config likely needs the following edits:
+
+    - **`auth: { type: bearer, token: "X" }`** is no longer recognised. Use `headers: { "Authorization": "Bearer X" }` instead. Old configs are silently dropped, and you'll see 401s from the server until you migrate.
+    - **`ws://` / `wss://` transports** are no longer supported. Use HTTP transport instead.
+    - **MCP prompts** are not supported. The "Use MCP prompt" command is gone.
+    - **Stdio subprocesses no longer inherit the parent environment**, apart from a few basics (on Linux and macOS: `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM` and `USER`). Declare every other env var you need under `env`. Use `${VAR}` substitution to pull values from the parent environment without committing secrets. See [Environment variables](#environment-variables) below.
+
+## Tools
+
+[MCP tools](https://modelcontextprotocol.io/docs/concepts/tools) appear in oterm's tool selector and can be enabled per chat.
+
+The model sees each MCP tool as `{server}_{tool}`: the `query_prometheus` tool on a server configured as `grafana` is presented as `grafana_query_prometheus`. Two servers can therefore export the same tool name, and each is selectable on its own.
+
+Because the server name reaches the model, it may only contain letters, digits, underscores and hyphens: `k8s-lab` is fine, `k8s.lab` is not. A server whose name has other characters is refused when the config loads, and a tool whose qualified name is over 64 characters is skipped; both are reported in the log.
 
 !!! note
-    Not all models are equipped to support tools. For those models that do not, the tool selection will be disabled.
+    Not all models support tools. For models that don't, the tool selection is disabled.
 
-    A lot of the smaller LLMs are not as capable with tools as larger ones you might be used to. If you experience issues with tools, try reducing the number of tools you attach to a chat, increase the context size, or use a larger LLM.
+    Smaller LLMs are often less capable with tools than larger ones. If you have issues, try reducing the number of tools attached to a chat, increasing the context size, or using a larger LLM.
 
+## Transports
 
-![Tool support](../img/mcp_tools.svg)
-oterm using the `git` MCP server to access its own repo.
+### `stdio` transport
 
-#### Prompts
-`oterm` supports [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts). Use the "Use MCP prompt" command to invoke a form with the prompt. Submitting will insert the prompt messages into the chat.
-
-![Prompt support](../img/mcp_prompts.svg)
-oterm displaying a test MCP prompt.
-
-#### Sampling
-`oterm` supports [MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling), acting as a geteway between Ollama and the servers it connects to. This way, an MCP server can request `oterm` to run a *completion* and even declare its model preferences and parameters!
-
-### Transports
-#### `stdio` transport
-
-Used for running local MCP servers, the configuration supports the `command`, `args`, `env` & `cwd` parameters. For example for the [git](https://github.com/modelcontextprotocol/servers/tree/main/src/git) MCP server you would add something like the following to the `mcpServers` section of the `oterm` [configuration file](../app_config.md):
+For local MCP servers. Accepts `command`, `args`, `env` and `cwd`. For the [git](https://github.com/modelcontextprotocol/servers/tree/main/src/git) MCP server:
 
 ```json
 {
-  ...
   "mcpServers": {
     "git": {
       "command": "docker",
@@ -49,51 +48,60 @@ Used for running local MCP servers, the configuration supports the `command`, `a
   }
 }
 ```
-#### `Streamable HTTP` transport
 
-Typically used to connect to remote MCP servers through Streamable HTTP, the only accepted parameter is the `url` parameter (should start with `http://` or `https://`). For example,
+### `Streamable HTTP` transport
+
+For remote MCP servers over HTTP. The `url` must start with `http://` or `https://`. URLs ending in `/sse` are treated as SSE; everything else is streamable HTTP.
 
 ```json
 {
-  ...
   "mcpServers": {
     "my_mcp": {
-			"url": "http://remote:port/path"
-		}
+      "url": "http://remote:port/path"
+    }
   }
 }
 ```
 
-#### `Websocket` transport
+## HTTP headers (auth)
 
-Also used to connect to remote MCP servers, but through websockets. The only accepted parameter is the `url` parameter (should start with `ws://` or `wss://`). For example,
+Use the `headers` dict to attach arbitrary HTTP headers, including `Authorization` for bearer-token auth:
 
 ```json
 {
-  ...
   "mcpServers": {
     "my_mcp": {
-			"url": "wss://remote:port/path"
-		}
-  }
-}
-```
-
-### Authentication
-#### HTTP bearer authentication
-
-`oterm` supports HTTP bearer authentication by use of tokens. Use
-```json
-{
-  ...
-  "mcpServers": {
-    "my_mcp": {
-			"url": "http://remote:port/path",
-      "auth": {
-        "type": "bearer",
-        "token": "XXX"
+      "url": "http://remote:port/path",
+      "headers": {
+        "Authorization": "Bearer XXX"
       }
     }
   }
 }
 ```
+
+## Environment variables
+
+For security, `stdio` MCP subprocesses do **not** inherit `oterm`'s environment, apart from a few basics: `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM` and `USER` on Linux and macOS, and `APPDATA`, `HOMEDRIVE`, `HOMEPATH`, `LOCALAPPDATA`, `PATH`, `PATHEXT`, `PROCESSOR_ARCHITECTURE`, `SYSTEMDRIVE`, `SYSTEMROOT`, `TEMP`, `USERNAME` and `USERPROFILE` on Windows. That keeps credentials like `OPENAI_API_KEY` or `AWS_SECRET_ACCESS_KEY` out of third-party MCP server processes unless you explicitly share them.
+
+Declare env vars in the `env` dict of each server. Any string value (in `env`, `command`, `args`, `url`, or `headers`) can reference the parent environment via `${VAR}` (required) or `${VAR:-default}` (optional with fallback):
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "${HOME}/.local/bin/mcp-github",
+      "args": ["--repo", "${REPO:-ggozad/oterm}"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+If a referenced variable is not set and has no default, server setup fails with an error naming the missing variable.
+
+## Sampling
+
+MCP [sampling](https://modelcontextprotocol.io/docs/concepts/sampling) is not supported. `oterm` advertises sampling as disabled to every server, so any sampling request is rejected by the protocol rather than crashing the chat.

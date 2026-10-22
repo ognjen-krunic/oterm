@@ -11,16 +11,17 @@ load_dotenv()
 
 
 class EnvConfig(BaseModel):
-    ENV: str = "development"
     OLLAMA_HOST: str = "127.0.0.1:11434"
     OLLAMA_URL: str = ""
+    # API key required for 'ollama.com' cloud models
+    OLLAMA_API_KEY: str | None = None
     OTERM_VERIFY_SSL: bool = True
     OTERM_DATA_DIR: Path = get_default_data_dir()
-    OPEN_WEATHER_MAP_API_KEY: str = ""
+    OTERM_OLLAMA_IMAGE_MODEL: str = "x/z-image-turbo"
 
 
 envConfig = EnvConfig.model_validate(os.environ)
-if envConfig.OLLAMA_URL == "":
+if envConfig.OLLAMA_URL == "":  # pragma: no branch
     envConfig.OLLAMA_URL = f"http://{envConfig.OLLAMA_HOST}"
 
 
@@ -53,5 +54,4 @@ class AppConfig:
             json.dump(self._data, f)
 
 
-# Expose AppConfig object for app to import
 appConfig = AppConfig()

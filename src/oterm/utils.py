@@ -1,133 +1,60 @@
-import asyncio
 import os
+import re
 import sys
-from collections.abc import Callable
-from functools import wraps
 from importlib import metadata
 from pathlib import Path
+from typing import Any
 
 import httpx
 from packaging.version import Version, parse
 
-from oterm.types import ParsedResponse
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}")
 
 
-def debounce(wait: float) -> Callable:
+def expand_env_vars(value: Any) -> Any:
+    """Recursively expand ``${VAR}`` and ``${VAR:-default}`` in string values.
+
+    Matches pydantic-ai's MCP config convention. Raises ``ValueError`` when a
+    required variable is missing and no default is provided.
     """
-    A decorator to debounce a function, ensuring it is called only after a specified delay
-    and always executes after the last call.
+    if isinstance(value, str):
 
-    Args:
-        wait (float): The debounce delay in seconds.
+        def replace(match: re.Match[str]) -> str:
+            name = match.group(1)
+            has_default = match.group(2) is not None
+            default = match.group(3) or ""
+            if name in os.environ:
+                return os.environ[name]
+            if has_default:
+                return default
+            raise ValueError(f"Environment variable ${{{name}}} is not defined")
 
-    Returns:
-        Callable: The decorated function.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        last_call = None
-        task = None
-
-        @wraps(func)
-        async def debounced(*args, **kwargs):
-            nonlocal last_call, task
-            last_call = asyncio.get_event_loop().time()
-
-            if task:
-                task.cancel()
-
-            async def call_func():
-                await asyncio.sleep(wait)
-                if asyncio.get_event_loop().time() - last_call >= wait:  # type: ignore
-                    await func(*args, **kwargs)
-
-            task = asyncio.create_task(call_func())
-
-        return debounced
-
-    return decorator
-
-
-def throttle(interval: float) -> Callable:
-    """
-    A decorator to throttle a function, ensuring it is called at most once per interval.
-    The first call executes immediately, subsequent calls within the interval are ignored.
-
-    Args:
-        interval (float): The throttle interval in seconds.
-
-    Returns:
-        Callable: The decorated function.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        last_called_at = None
-
-        @wraps(func)
-        async def throttled(*args, **kwargs):
-            nonlocal last_called_at
-            now = asyncio.get_event_loop().time()
-
-            if last_called_at is None or now - last_called_at >= interval:
-                last_called_at = now
-                await func(*args, **kwargs)
-
-        return throttled
-
-    return decorator
-
-
-def parse_response(input_text: str) -> ParsedResponse:
-    """
-    Parse a response from the chatbot.
-    """
-
-    thought = ""
-    response = input_text
-    formatted_output = input_text
-
-    # If the response contains a think tag, split the response into the thought process and the actual response
-    thought_end = input_text.find("</think>")
-    if input_text.startswith("<think>") and thought_end != -1:
-        thought = input_text[7:thought_end].lstrip("\n").rstrip("\n").strip()
-        response = input_text[thought_end + 8 :].lstrip("\n").rstrip("\n")
-        # transform the think tag into a markdown blockquote (for clarity)
-        if thought.strip():
-            thought = "\n".join([f"> {line}" for line in thought.split("\n")])
-            formatted_output = (
-                "> ### <thought\\>\n" + thought + "\n> ### </thought\\>\n" + response
-            )
-
-    return ParsedResponse(
-        thought=thought, response=response, formatted_output=formatted_output
-    )
+        return _ENV_VAR_PATTERN.sub(replace, value)
+    if isinstance(value, dict):
+        return {k: expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_vars(v) for v in value]
+    return value
 
 
 def get_default_data_dir() -> Path:
     """
     Get the user data directory for the current system platform.
 
-    Linux: ~/.local/share/oterm
-    macOS: ~/Library/Application Support/oterm
     Windows: C:/Users/<USER>/AppData/Roaming/oterm
+    macOS: ~/Library/Application Support/oterm
+    Linux and other platforms: ~/.local/share/oterm
 
-    :return: User Data Path
-    :rtype: Path
+    XDG_DATA_HOME overrides the base directory everywhere except Windows.
     """
     home = Path.home()
-
-    system_paths = {
-        "win32": home / "AppData/Roaming/oterm",
-        "linux": Path(os.getenv("XDG_DATA_HOME") or Path(home / ".local/share"))
-        / "oterm",
-        "darwin": Path(
-            os.getenv("XDG_DATA_HOME") or Path(home / "Library/Application Support")
-        )
-        / "oterm",
-    }
-
-    data_path = system_paths[sys.platform]
-    return data_path
+    if sys.platform == "win32":
+        return home / "AppData/Roaming/oterm"
+    if sys.platform == "darwin":
+        default = home / "Library/Application Support"
+    else:
+        default = home / ".local/share"
+    return Path(os.getenv("XDG_DATA_HOME") or default) / "oterm"
 
 
 def semantic_version_to_int(version: str) -> int:
@@ -179,41 +106,3 @@ async def is_up_to_date() -> tuple[bool, Version, Version]:
             # If no network connection, do not raise alarms.
             pypi_version = running_version
     return running_version >= pypi_version, running_version, pypi_version
-
-
-async def check_ollama() -> bool:
-    """
-    Check if the Ollama server is up and running
-    """
-    from oterm.config import envConfig
-
-    up = False
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(envConfig.OLLAMA_URL)
-            up = response.status_code == 200
-    except httpx.HTTPError:
-        up = False
-    finally:
-        if not up:
-            from oterm.app.oterm import app
-
-            app.notify(
-                f"The Ollama server is not reachable at {envConfig.OLLAMA_URL}, please check your connection or set the OLLAMA_URL environment variable. oterm will now quit.",
-                severity="error",
-                timeout=10,
-            )
-
-            async def quit():
-                await asyncio.sleep(10.0)
-                try:
-                    from oterm.tools.mcp.setup import teardown_mcp_servers
-
-                    await teardown_mcp_servers()
-                    exit()
-
-                except Exception:
-                    pass
-
-            asyncio.create_task(quit())
-    return up

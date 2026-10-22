@@ -1,0 +1,603 @@
+# Changelog
+
+## [Unreleased]
+
+## [0.26.1] - 2026-10-21
+
+### Changed
+
+- `pydantic-ai-slim` bumped to 2.59.0 and `pydantic-ai-harness` to 0.59.0.
+- `pillow` bumped to 13.0.0.
+
+### Fixed
+
+- Code blocks longer than 49 lines render in full. ([#346](https://github.com/ggozad/oterm/issues/346))
+- Tool calls show their args for providers that stream them, such as LM Studio.
+
+## [0.26.0] - 2026-10-12
+
+### Added
+
+- `Go to chat` command (`ctrl+f`, keymap id `go.to.chat`): searches the chats by name and switches to the one picked.
+
+### Fixed
+
+- Switching chats with `ctrl+tab` or `ctrl+shift+tab` focuses the new chat's prompt.
+- The chat edit screen shows at least three rows of the model list and scrolls when the terminal is too short to fit it. ([#344](https://github.com/ggozad/oterm/issues/344))
+
+## [0.25.0] - 2026-09-27
+
+### Added
+
+- `summarize` capability: older messages are summarized once the conversation reaches 80% of the model's context window, keeping the most recent 40% of the window. The summary is written by the chat's model with the chat's parameters, thinking off. A notification says when it happens. Local servers are asked for the window they run the model with when the chat opens and after each reply; until they report one, requests are sent as they are.
+- The usage footer shows context used against the model's context window, in the theme's warning colour from 50% and its error colour from 80%. The window comes from the pydantic-ai model profile, Ollama's loaded models, `max_model_len` in `/v1/models` (vLLM, oMLX), or LM Studio's `loaded_context_length`.
+
+### Changed
+
+- Python 3.10 is no longer supported. oterm requires Python 3.11 or newer.
+- `pydantic-ai-slim` bumped to 2.51.0 and `pydantic-ai-harness` to 0.36.0.
+
+### Fixed
+
+- Regenerating a response now shows images returned by tools and the error from a failed tool call, and stores those images with the message.
+- Regenerating a response sent in the same session no longer leaves the previous answer on screen.
+- A failed regeneration keeps the previous answer on screen.
+- Regenerating a response no longer discards images attached to the unsent prompt.
+- Anthropic Claude 5 models are reported as supporting images.
+- oterm starts on platforms other than Linux, macOS, Windows and Android, using `~/.local/share/oterm` as the data directory.
+- `oterm --config` no longer prints a trailing blank line, and masks `OLLAMA_API_KEY`.
+- `oterm --help` describes each option.
+- Turning thinking off on an OpenAI-compatible endpoint sends `chat_template_kwargs.enable_thinking: false`.
+
+### Security
+
+- The `web_fetch` capability picks up the pydantic-ai 2.44.0 fixes for GHSA-fpf4-vwcp-v4hp and GHSA-22h6-qm39-v87j.
+
+## [0.24.0] - 2026-09-02
+
+### Added
+
+- `speak` capability, reading responses aloud through piper in the GLaDOS voice as they stream. Install with the `oterm[speak]` extra, which requires Python 3.11 or newer. The entry appears only when `pydantic-ai-tts` is importable. onnxruntime telemetry is disabled unless `ORT_DISABLE_TELEMETRY` is already set.
+
+## [0.23.1] - 2026-08-06
+
+### Fixed
+
+- DeepSeek V4 models report thinking support. ([#328](https://github.com/ggozad/oterm/issues/328)) [pescador-barquero]
+
+## [0.23.0] - 2026-07-31
+
+### Added
+
+- New chats pre-select the provider of the last created chat. ([#298](https://github.com/ggozad/oterm/issues/298))
+- Copy the last message of the current chat, bound to <kbd>Ctrl</kbd>+<kbd>o</kbd> (`copy.message`), with a matching `Copy message` command palette entry. ([#310](https://github.com/ggozad/oterm/issues/310))
+
+## [0.22.0] - 2026-07-31
+
+### Fixed
+
+- MCP tool names are qualified by server as `{server}_{tool}`. The `0.22.0` store upgrade rewrites existing chat selections for servers reachable at that launch. ([#321](https://github.com/ggozad/oterm/issues/321))
+- MCP server names that providers would reject as part of a tool name are refused at config load, and tools whose qualified name exceeds 64 characters are skipped.
+
+## [0.21.0] - 2026-07-25
+
+### Added
+
+- Selectable capabilities alongside tools: `web_search` (native provider search or DuckDuckGo), `web_fetch` (native or local URL fetching), `memory` (persistent cross-chat notebook in `$OTERM_DATA_DIR/memory.db`), and `filesystem` (file access sandboxed to the launch directory).
+
+### Changed
+
+- pydantic-ai bumped to 2.17.0.
+- pillow bumped to 12.3.0; vulnerable transitive dependencies (pyasn1, setuptools, pymdown-extensions) upgraded.
+
+### Fixed
+
+- Attached images are sent with their actual media type instead of always `image/png`; unrecognizable image data is skipped.
+
+## [0.20.0] - 2026-06-30
+
+### Added
+
+- When selecting an Ollama model with no saved parameters, the `temperature`, `top_p`, `max_tokens`, and `seed` fields are pre-populated from the Modelfile's `PARAMETER` defaults (`num_predict` maps to `max_tokens`). ([#317](https://github.com/ggozad/oterm/pull/317))
+
+### Changed
+
+- **Upgraded to pydantic-ai 2.x** (from 1.100), bringing newer model and provider support.
+- **Grok routes through x.ai's OpenAI-compatible endpoint** (`https://api.x.ai/v1`); the `grok:` provider prefix was removed in pydantic-ai 2.0.
+- Logfire instrumentation defaults to format v5, reporting agent-run-span token usage under `gen_ai.aggregated_usage.*`; dashboards reading run-span usage may need updating.
+
+## [0.19.0] - 2026-06-08
+
+### Added
+
+- Session-only thinking toggle bound to <kbd>Ctrl</kbd>+<kbd>t</kbd> (`toggle.thinking`), with a matching `Toggle thinking` command palette entry. ([#313](https://github.com/ggozad/oterm/issues/313))
+
+### Fixed
+
+- **Thinking can now be disabled for Ollama models.** ([#312](https://github.com/ggozad/oterm/issues/312)) Ollama routes through pydantic-ai's `OllamaProvider`, and thinking-capable models are marked `supports_thinking` in their profile, so the chat's thinking toggle reaches Ollama as `reasoning_effort` instead of being silently dropped.
+
+## [0.18.0] - 2026-05-22
+
+### Changed
+
+- **Docs site rebuilt with [Zensical](https://zensical.org/).** Replaces MkDocs and Material for MkDocs ahead of MkDocs 2.0's breaking changes. Same content with a refreshed look: custom oterm logo and adaptive favicon, JetBrains Mono code blocks, an announcement banner, a hero landing page.
+- **MCP layer migrated to pydantic-ai 1.100's `MCPToolset`.** Replaces the deprecated `MCPServer*` classes ahead of their removal in pydantic-ai 2.0. The runtime now uses FastMCP's client under the hood (via `fastmcp-slim[client]`). Existing `mcpServers` config entries (stdio, HTTP, SSE, env-var substitution, WebSocket rejection) keep working unchanged.
+- **pydantic-ai 1.100 deprecations cleared end-to-end.** Image generation now registers via `capabilities=[NativeTool(...)]`. Streaming reads `run.usage` as a property. Tool-call parts use `NativeToolCallPart` / `NativeToolReturnPart`. Provider ids align with pydantic-ai's new namespace: `openai` → `openai-chat`, `google-gla` → `google`, `google-vertex` → `google-cloud`. Existing chats are rewritten in place by a one-shot store migration (v0.18.0).
+
+### Fixed
+
+- **Assistant responses containing code fences no longer go blank after streaming finishes.** ([#308](https://github.com/ggozad/oterm/issues/308)) `MarkdownStream`'s per-delta `Markdown.append` advances the widget's internal parse cursor to the start of the trailing top-level token, so an unclosed-then-closed code fence could leave block state that the next refresh would drop. `finish_stream` now forces a full `Markdown.update` with the accumulated text after stopping each stream.
+
+## [0.17.1] - 2026-05-10
+
+### Added
+
+- **Built-in `generate_image` tool.** Delegates to Ollama's `/api/generate` with image-generation models (`x/z-image-turbo`, `x/flux2-klein`, …). Configure the default model with `OTERM_OLLAMA_IMAGE_MODEL` or override per call via the tool's `model` argument.
+
+## [0.17.0] - 2026-05-03
+
+### Added
+
+- **Render assistant-emitted images inline.** When a model returns a `FilePart` during streaming, the image renders between the thinking section and the response, persists alongside the assistant message in the chat store, and reappears on chat reload. Click an image to save it to `$OTERM_DATA_DIR/downloads/`. Works with Google Gemini image-preview models out of the box.
+- **New `openai-responses` provider.** Routes through pydantic-ai's `OpenAIResponsesModel` and enables the `ImageGenerationTool` builtin on every Agent built for it. Pick "OpenAI Responses" in the chat-edit modal, choose a Responses-compatible model (e.g. `gpt-5.4`), and image generation is implicit — no per-chat toggle. Reuses `OPENAI_API_KEY` and the existing OpenAI model lister.
+- **Save logs from the log viewer.** Press `s` in the logs modal to write the current buffer to a timestamped `oterm-logs-<ts>.txt` under `$OTERM_DATA_DIR/logs/`. Useful for debugging MCP servers. [robbyt]
+
+### Fixed
+
+- **`OLLAMA_API_KEY` is now passed through to the Ollama provider** so cloud models on `ollama.com` can authenticate. Previously a hardcoded dummy key (`"ollama"`) was always sent, blocking access to cloud models. [tseaver]
+
+## [0.16.0] - 2026-04-29
+
+### Added
+
+- **Welcome screen on first launch.** Replaces the auto-opened "new chat" modal that fired on an empty store, which could swallow the user's first chat if they typed before it appeared.
+- **Streaming pipeline now yields message parts.** `ChatContainer.stream_agent` emits `TextPartDelta | ThinkingPartDelta | FilePart | ToolCallPart | BuiltinToolCallPart | ToolReturnPart | BuiltinToolReturnPart` instead of `(thinking, text)` tuples. Consumers `match` on shape; tool calls and tool returns are surfaced from `CallToolsNode` as well as `ModelRequestNode`. Image-emitting models can now plug in without a parallel code path.
+- **Assistant tool calls render inline as expandable entries.** A `▸ tool call: <name>` line appears between thinking and the response; clicking expands it to show the args and (once the tool returns) the result. Args render type-aware: dicts/lists and JSON-parseable strings as syntax-highlighted Rich JSON, plain strings preserving newlines (truncated), `None` as dim `(none)`.
+- **Android support.** `system_paths` in utils.py was previously missing a data directory for Android and so failed. [choimadeleine]
+
+### Changed
+
+- **Isolate `perform_checks` in its own worker group** so the version/Ollama probe at startup can't starve the chat worker.
+- Lowercased the in-chat thinking label (`thinking…` / `▸ thoughts` / `▾ thoughts`) for consistency with the new tool-call header.
+
+### Fixed
+
+- **Regenerate tests are no longer flaky on Python 3.12.** A single `await pilot.pause()` after `action_regenerate_llm_message` (which spawns a background `response_task` via `asyncio.create_task`) drained in one cycle on 3.13 by luck and didn't on 3.12. Tests now use a `wait_until(pilot, predicate)` helper.
+
+## [0.15.0] - 2026-04-27
+
+### Added
+
+- **Multi-provider support via [pydantic-ai](https://ai.pydantic.dev/).** OpenAI, Anthropic, Google (AI / Vertex), Groq, Mistral, Cohere, AWS Bedrock, DeepSeek, Cerebras, Grok, Hugging Face, and any OpenAI-compatible endpoint (vLLM, LM Studio, llama.cpp, OpenRouter, LiteLLM, …). Configure via env-var API keys or the new `openaiCompatible` block in `config.json`.
+- **Inline image attachments as `[Image #N]` tokens** rendered in the prompt; positioned by tokens or appended at the end, with skipped malformed images surfaced as notifications.
+- **Provider → `ModelSettings` registry** so chat parameter forms only show settings the active provider actually supports.
+- **CI runs lint, type-check, and tests on every push and PR.** README gains Tests + Codecov badges.
+- **`${VAR}` env-var expansion** across configuration.
+
+### Changed
+
+- **Migrated from `ollama-python` to `pydantic-ai`** as the underlying agent layer; Ollama itself routes through `OpenAIChatModel` with profile-based thinking detection.
+- **Redesigned chat UI** to a borderless, accent-driven layout. `LoadingIndicator` replaced with a live `UsageStatus` footer. The thinking section collapses once the response starts streaming. The multiline-input toggle is gone — the prompt is now an auto-growing `TextArea`.
+- **Streamed Markdown deltas** instead of re-rendering the whole document per token; stick-to-bottom autoscroll during streaming, with a row threshold to avoid jitter.
+- **Replaced the custom MCP client with pydantic-ai's `MCPServer`** and adopted its `MCPServerConfig` schema.
+- **Replaced `pyright`/`mypy` with `ty`/`ruff`.**
+- **Comprehensive test rewrite** spanning agent, widget, app, and modals tiers; legacy live-Ollama and VCR-cassette tests dropped.
+- External tools loaded via `oterm.tools` entry points instead of the bespoke loader.
+- Drive the chat-edit parameter form from a spec list of supported settings.
+- Truncate the full prior turn on regenerate (not just the last two messages) so tool-using turns reconstruct cleanly.
+- Track the regenerate task so `Esc` can cancel it.
+
+### Fixed
+
+- Skip malformed images instead of crashing the stream.
+- Fail loudly for missing `openai-compat` endpoints instead of silent fallthrough.
+- Prevent `OPENAI_API_KEY` leakage to `openai-compat` endpoints that don't define their own key.
+- Catch unexpected errors in `response_task` and surface them as notifications; handle cancellation, `ModelHTTPError`, and generic exceptions in `action_regenerate_llm_message`.
+- Open `ChatEdit` cleanly when the saved provider is no longer configured.
+- `Ctrl+Tab` chat cycle: priority bindings + DOM-order lookup.
+- Surface Ollama `list_models` / `show_model` failures to `oterm.log`.
+
+### Removed
+
+- Pull-model command and the Ollama client wrapper backing it.
+- MCP prompts feature (no clear adoption signal).
+- `Ctrl+Backspace` shortcut for delete chat.
+- `check_ollama` startup probe.
+- Stale config fields and CSS classes left over from the pre-pydantic-ai layout.
+
+## [0.14.7] - 2025-12-19
+
+### Fixed
+
+- Pin `textualeffects` dependency to a working version.
+
+### Changed
+
+- Update all dependencies.
+
+## [0.14.6] - 2025-10-15
+
+- Make oterm work with Python 3.14. [ggozad, robbyt]
+- Improve reliability of tests. [robbyt]
+
+## [0.14.5] - 2025-10-03
+
+- Fix oterm crash when user submits invalid markdown. [ggozad]
+- Example on how to do RAG with oterm (docs). [ggozad]
+
+## [0.14.3] - 2025-08-13
+
+- Add solarized theme. [pbjames]
+- Remove throttling when rendering chat items, as it occasionally omits the last few tokens. [ggozad]
+
+## [0.14.1] - 2025-08-01
+
+- Fix tool calling in thinking models to preserve the thinking before the tool calling. [ggozad]
+- Honour `XDG_DATA_HOME` for configuration on Linux, MacOS. [0xmohit]
+- UX speed improvements. [ggozad]
+
+## [0.14.0] - 2025-06-12
+
+- Support for bearer authentication for MCP servers. [ggozad]
+- Support Streamable HTTP MCP servers. Drop support for SSE. [ggozad]
+- Remove `completion` method, we now stream only. [ggozad]
+- Postpone sixel detection to avoid spurious characters in terminals that do not support sixel. [ggozad]
+- oterm in homebrew/core. [ggozad]
+
+## [0.13.1] - 2025-06-03
+
+- Use "thinking" mode for models that support it. [ggozad]
+- Detect and show model capabilities in Edit Chat screen. [ggozad]
+
+## [0.13.0] - 2025-05-30
+
+- Streaming support while using tools. [ggozad]
+
+## [0.12.1] - 2025-05-21
+
+- Dependencies update. [ggozad]
+
+## [0.12.0] - 2025-05-11
+
+- Move as much as possible to pydantic, simplify code. [ggozad]
+- Remove commands, little feedback seems noone is using it. [ggozad]
+- When regenerating a message default to chat completion as tools do not work when streaming. [ggozad]
+- When editing a chat filter out tools that are no longer available. [ggozad]
+
+## [0.11.2] - 2025-04-22
+
+- Support for SSE & WS MCP transports. [ggozad]
+
+## [0.11.1] - 2025-04-17
+
+- Fix error with prompts not submitting if they have no fields. [ggozad]
+- Group tools by MCP server. [ggozad]
+
+## [0.11.0] - 2025-04-13
+
+- MCP Sampling support. [ggozad]
+
+## [0.10.3] - 2025-04-13
+
+- Built-in log viewer. [ggozad]
+
+## [0.10.2] - 2025-04-12
+
+- Improve and release textualeffects for faster splash screen. [ggozad]
+- Faster boot by performing version & ollama checks in parallel. [ggozad]
+- Documentation for development & debugging. [ggozad]
+
+## [0.10.1] - 2025-04-09
+
+- More stability handling MCP servers. [ggozad]
+- Add pre-commit hooks and fix linting errors. [ggozad]
+- Add "think" tool allowing models to think before responding. [ggozad]
+- Remove tools that are not that useful. [ggozad]
+
+## [0.10.0] - 2025-04-02
+
+- Add sixel support for images. [ggozad]
+- Enable scrolling with keys within a chat. [ggozad]
+
+## [0.9.5] - 2025-03-25
+
+- When creating a command, pin the current version of oterm as a dependency. [ggozad]
+
+## [0.9.4] - 2025-03-25
+
+- Support for MCP prompts. [ggozad]
+
+## [0.9.3] - 2025-03-25
+
+- Include the default environment when running an mcp server with custom env. [ggozad]
+
+## [0.9.2] - 2025-03-25
+
+- Override default Ollama `Options()` to allow for single string as a stop word. [ggozad]
+- Enable `-h` short-form help option. [brucewillke]
+- Fix checking latest version on pypi. [ggozad]
+
+## [0.9.1] - 2025-03-25
+
+- Check with pypi if oterm is up to date. [ggozad]
+- CLI command creation. [ggozad]
+- Remove pyperclip dependency. [ggozad]
+- Documentation site. [ggozad]
+
+## [0.8.4] - 2025-02-23
+
+- Keep MCP sessions alive while oterm is running. Fix running multiple MCP tools. [sheffler, ggozad]
+
+## [0.8.3] - 2025-02-06
+
+- Do not save the chat when a model is selected when creating a new chat. [ggozad]
+- Replace custom `Notification()` with textual's built-in notification. [ggozad]
+- Dependency updates. [ggozad]
+- Improve visibility of labels in the modals. [ggozad]
+
+## [0.8.2] - 2025-02-03
+
+- Fix merging chat and additional options properly. [ggozad]
+
+## [0.8.1] - 2025-01-29
+
+- Support for thinking models (e.g. DeepSeek R1). [liorm]
+
+## [0.8.0] - 2025-01-19
+
+- Support for Model Context Protocol (MCP) tools. [ggozad]
+- Simplify `Config()`, base it on pydantic's `BaseModel`. [ggozad]
+
+## [0.7.3] - 2025-01-07
+
+- Fix parameter parsing / `Options` bug. [lorenmh]
+
+## [0.7.2] - 2025-01-03
+
+- Ability to add custom tools. [ggozad]
+- Add a web tool, giving Ollama access to the web. [ggozad]
+
+## [0.7.1] - 2025-01-02
+
+- Support for Ollama's structured output. Use the `format` parameter to specify the output format as a JSON schema.
+- Ability to clear a chat, removing all messages. [ggozad]
+
+## [0.7.0] - 2024-12-29
+
+- Enforce foreign key constraints in the sqlite db, to allow proper cascading deletes. [ggozad]
+- Persist images in the chat history & sqlite db. [ggozad]
+- Update OllamaLLM client to match the use of Pydantic in ollama-python. [ggozad]
+- Gracefully handle exceptions in tools. [ggozad]
+- Fix documentation on keymap example in the readme. [bartosz]
+- Update the shortcuts for new chat and close chat. [pekcheey]
+
+## [0.6.9] - 2024-11-23
+
+- Simplify aiosql usage. [ggozad]
+
+## [0.6.8] - 2024-11-20
+
+- Fixed styling bug that obscured the chat tabs. [ggozad]
+
+## [0.6.7] - 2024-11-19
+
+- Support all textual built-in themes. [ggozad]
+
+## [0.6.6] - 2024-11-13
+
+- Replace `can_view` with `can_view_partial` following changes to Widget in textual. [ggozad]
+
+## [0.6.5] - 2024-10-12
+
+- Allow customizing select key bindings. [ggozad]
+- Fixed erroneous `OLLAMA_URL` documentation. [gerroon]
+- Documentation improvements. [tylerlocnguyen]
+- When Ollama throws an exception while generating a response, capture it and show a notification to the user. [ggozad]
+
+## [0.6.4] - 2024-09-28
+
+- Command to pull/update model. [ggozad]
+- ESC dismisses the splash screen. [ggozad]
+
+## [0.6.3] - 2024-09-25
+
+- Fix typo preventing build on FreeBSD. [nivit]
+- Allow disabling the splash screen. [ggozad]
+
+## [0.6.2] - 2024-09-25
+
+- Fix creating a new chat when no chats are available. [ggozad]
+- Fancy splash screen using textualeffects. [ggozad]
+
+## [0.6.1] - 2024-09-24
+
+- Add support for tools/function calling. [ggozad]
+- Fix newline insertion in multi-line widget. [ggozad]
+
+## [0.5.2] - 2024-09-06
+
+- Fix crash when starting the app without an existing db. [ggozad]
+
+## [0.5.1] - 2024-09-06
+
+- Persist changed parameters when editing a chat. [ggozad]
+- Add `id` column to message table. [ggozad]
+- Command to regenerate last ollama response. [ggozad]
+
+## [0.5.0] - 2024-09-04
+
+- Add support for the command palette. Move most chat-related actions there. [ggozad]
+
+## [0.4.4] - 2024-08-30
+
+- Restore shortcut for command palette that overrided our choice for adding images. [ggozad]
+
+## [0.4.3] - 2024-08-28
+
+- Force utf-8 when exporting messages to a file. [ggozad]
+- Migrate to using uv instead of poetry for packaging/dependency management. [ggozad]
+
+## [0.4.2] - 2024-08-20
+
+- Remove patch to `TextArea` & restore tab handling. [ggozad]
+
+## [0.4.1] - 2024-08-20
+
+- Use `127.0.0.1` as the default host for Ollama. [ggozad]
+
+## [0.4.0] - 2024-08-19
+
+- Use stored messages and chat API instead of context and generate API. [yilmaz08, ggozad]
+
+## [0.3.1] - 2024-08-14
+
+- Remove dependency on `tree-sitter`, `tree-sitter-languages` since they require pre-compiled wheels. [ggozad]
+
+## [0.3.0] - 2024-08-14
+
+- Support customizing model parameters. [ggozad]
+- Cycle saved chats with `Ctrl+Tab` and `Ctrl+Shift+Tab`. [yilmaz08]
+
+## [0.2.10] - 2024-08-09
+
+- Enter posts while `Shift+Enter` injects a newline in the multiline-widget. [ggozad]
+- Minor bug fixes & updates. [ggozad]
+
+## [0.2.9] - 2024-05-03
+
+- Dependency updates. [suhr, ggozad]
+
+## [0.2.8] - 2024-05-03
+
+- Do not scroll to the bottom of the chat when the user is reading past messages. [lainedfles, ggozad]
+- Allow customizing keep-alive parameter. [ggozad]
+
+## [0.2.7] - 2024-04-22
+
+- Take into account env variables when calling `show`/`list` etc. on Ollama. [habaneraa]
+
+## [0.2.6] - 2024-04-20
+
+- Fix handling of `OLLAMA_HOST`, `OLLAMA_URL`, `OTERM_VERIFY_SSL` env variables. [ggozad]
+- Fix windows crash when switching chat panes on slow machines. [ggozad]
+
+## [0.2.5] - 2024-04-02
+
+- Copy code block when a Markdown block is clicked instead of the entire bot reply. [ggozad]
+
+## [0.2.4] - 2024-03-19
+
+- Minor bug fixes. [ggozad]
+- Remove our own implementation of the Ollama client and use the official one. [ggozad]
+- Allow user to customize the path of data dir via the `OTERM_DATA_DIR` env. [PeronGH]
+
+## [0.2.3] - 2024-02-28
+
+- Minor fix for the chat history styling. [ggozad]
+
+## [0.2.2] - 2024-02-28
+
+- Allow user to navigate through the prompt history in a chat. [ggozad]
+
+## [0.2.1] - 2024-02-16
+
+- Export chat as markdown document. [ggozad]
+
+## [0.2.0] - 2024-02-14
+
+- Remove the template from the chat configuration. [ggozad]
+- Add support for "editing" a chat, allowing for changing system prompt and template. [ggozad]
+- Update textual and remove our own monkey patching for Markdown. Increase Markdown size from 20 lines to 50. [ggozad]
+
+## [0.1.22] - 2024-02-01
+
+- Cancel inference when the user presses `ESC`. [ggozad]
+- Speed up initial loading of the app by mounting past messages lazily only when a chat pane is viewed. [ggozad]
+
+## [0.1.21] - 2024-01-24
+
+- Allow changing the root of the filesystem tree when selecting an image. [ggozad]
+- Minor bug fixes. [ggozad]
+
+## [0.1.20] - 2024-01-12
+
+- Minor bug fixes. [ggozad]
+
+## [0.1.19] - 2024-01-11
+
+- Introduce `AppConfig` saved to json file. Save theme setting for the time being. [ggozad]
+- Fix `TextArea` and Markdown widgets to work with light theme. [ggozad]
+
+## [0.1.18] - 2024-01-05
+
+- Bug fixes. [ggozad]
+
+## [0.1.17] - 2023-12-19
+
+- Support multimodal models, allow adding images to chat messages. [ggozad]
+- Change key bindings so that they can be invoked without losing prompt focus. [ggozad]
+- Add key binding to switch to multiline input using `Ctrl+N`. [ggozad]
+
+## [0.1.16] - 2023-12-07
+
+- Support markdown in chat messages. [ggozad]
+- Show db location with when running with `--db`. [ggozad]
+
+## [0.1.15] - 2023-12-07
+
+- Fix crash on renaming a chat. [ggozad]
+
+## [0.1.14] - 2023-12-06
+
+- Automate pypi releases through github actions. [ggozad]
+- Minor bug fixes. [ggozad]
+
+## [0.1.13] - 2023-12-04
+
+- Forgotten db upgrade. [ggozad]
+
+## [0.1.11] - 2023-11-29
+
+- Syntax highlighting for json responses. [ggozad]
+- Support for `format` parameter in Ollama (essentially json for the time being). [ggozad]
+
+## [0.1.10] - 2023-11-14
+
+- Prompt widget improvements. [ggozad]
+- When pasting multiline text to the singleline input, switch to multiline textarea. [ggozad]
+- Disable SSL verification via `OTERM_VERIFY_SSL`. [huynle]
+
+## [0.1.9] - 2023-11-04
+
+- Introduce `FlexibleInput`, an input that can be multiline. [ggozad]
+
+## [0.1.8] - 2023-11-03
+
+- Remove distutils dependency, make oterm compatible with python 3.12. [denehoffman]
+
+## [0.1.7] - 2023-11-01
+
+- Allow customizing the system and template of models. [ggozad]
+- DB migrations. [ggozad]
+
+## [0.1.5] - 2023-11-01
+
+- Fix whitespace bug in model selection screen. [ggozad]
+
+## [0.1.4] - 2023-10-18
+
+- Show template, system, and params in the model selection screen. [ggozad]
+- Click to copy to clipboard. [ggozad]
+
+## [0.1.3] - 2023-10-17
+
+- Remove pydantic and as a result, the rust dependency & build in homebrew. [ggozad]
+- Show discreet info on running model. [ggozad]
+
+## [0.1.2] - 2023-10-17
+
+- Ability to rename chats. [ggozad]
+
+## [0.1.0] - 2023-10-15
+
+- Initial release. [ggozad]

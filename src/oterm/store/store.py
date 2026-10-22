@@ -7,8 +7,22 @@ from packaging.version import parse
 
 from oterm.config import envConfig
 from oterm.store.upgrades import upgrades
-from oterm.types import ChatModel, MessageModel, Tool
+from oterm.types import ChatModel, MessageModel
 from oterm.utils import int_to_semantic_version, semantic_version_to_int
+
+
+def _chat_from_row(row) -> ChatModel:
+    id, name, model, system, provider, parameters, tools, thinking = row
+    return ChatModel(
+        id=id,
+        name=name,
+        model=model,
+        system=system,
+        provider=provider,
+        parameters=json.loads(parameters),
+        tools=json.loads(tools),
+        thinking=thinking,
+    )
 
 
 class Store:
@@ -26,7 +40,6 @@ class Store:
         self.db_path = data_path / "store.db"
 
         if not self.db_path.exists():
-            # Create tables and set user_version
             async with aiosqlite.connect(self.db_path) as connection:
                 await connection.executescript(
                     """
@@ -35,9 +48,8 @@ class Store:
                         "name"          TEXT,
                         "model"         TEXT NOT NULL,
                         "system"        TEXT,
-                        "format"        TEXT,
+                        "provider"      TEXT DEFAULT "ollama",
                         "parameters"    TEXT DEFAULT "{}",
-                        "keep_alive"    INTEGER DEFAULT 5,
                         "tools"         TEXT DEFAULT "[]",
                         "thinking"      BOOLEAN DEFAULT 0,
                         PRIMARY KEY("id" AUTOINCREMENT)
@@ -49,14 +61,13 @@ class Store:
                         "author"	TEXT NOT NULL,
                         "text"		TEXT NOT NULL,
                         "images"    TEXT DEFAULT "[]",
-                        PRIMARY KEY("id" AUTOINCREMENT)
+                        PRIMARY KEY("id" AUTOINCREMENT),
                         FOREIGN KEY("chat_id") REFERENCES "chat"("id") ON DELETE CASCADE
                     );
                 """
                 )
                 await self.set_user_version(metadata.version("oterm"))
         else:
-            # Upgrade database
             current_version: str = metadata.version("oterm")
             db_version = await self.get_user_version()
             for version, steps in upgrades:
@@ -82,25 +93,22 @@ class Store:
             )
 
     async def save_chat(self, chat_model: ChatModel) -> int:
+        # `INSERT OR REPLACE`: callers pass `id=None` for a new row (sqlite
+        # autoincrements) or a real id to overwrite an existing chat.
         async with aiosqlite.connect(self.db_path) as connection:
             res = await connection.execute_insert(
                 """
                 INSERT OR REPLACE
-                INTO chat(id, name, model, system, format, parameters, keep_alive, tools, thinking)
-                VALUES(:id, :name, :model, :system, :format, :parameters, :keep_alive, :tools, :thinking) RETURNING id;""",
+                INTO chat(id, name, model, system, provider, parameters, tools, thinking)
+                VALUES(:id, :name, :model, :system, :provider, :parameters, :tools, :thinking) RETURNING id;""",
                 {
                     "id": chat_model.id,
                     "name": chat_model.name,
                     "model": chat_model.model,
                     "system": chat_model.system,
-                    "format": chat_model.format,
-                    "parameters": json.dumps(
-                        chat_model.parameters.model_dump(exclude_unset=True)
-                    ),
-                    "keep_alive": chat_model.keep_alive,
-                    "tools": json.dumps(
-                        [tool.model_dump() for tool in chat_model.tools]
-                    ),
+                    "provider": chat_model.provider,
+                    "parameters": json.dumps(chat_model.parameters),
+                    "tools": json.dumps(chat_model.tools),
                     "thinking": chat_model.thinking,
                 },
             )
@@ -122,9 +130,8 @@ class Store:
                 UPDATE chat
                 SET name = :name,
                     system = :system,
-                    format = :format,
+                    provider = :provider,
                     parameters = :parameters,
-                    keep_alive = :keep_alive,
                     tools = :tools,
                     thinking = :thinking
                 WHERE id = :id;
@@ -133,14 +140,9 @@ class Store:
                     "id": chat_model.id,
                     "name": chat_model.name,
                     "system": chat_model.system,
-                    "format": chat_model.format,
-                    "parameters": json.dumps(
-                        chat_model.parameters.model_dump(exclude_unset=True)
-                    ),
-                    "keep_alive": chat_model.keep_alive,
-                    "tools": json.dumps(
-                        [tool.model_dump() for tool in chat_model.tools]
-                    ),
+                    "provider": chat_model.provider,
+                    "parameters": json.dumps(chat_model.parameters),
+                    "tools": json.dumps(chat_model.tools),
                     "thinking": chat_model.thinking,
                 },
             )
@@ -150,61 +152,39 @@ class Store:
         async with aiosqlite.connect(self.db_path) as connection:
             chats = await connection.execute_fetchall(
                 """
-                SELECT id, name, model, system, format, parameters, keep_alive, tools, thinking
+                SELECT id, name, model, system, provider, parameters, tools, thinking
                 FROM chat;
                 """
             )
 
-            return [
-                ChatModel(
-                    id=id,
-                    name=name,
-                    model=model,
-                    system=system,
-                    format=format,
-                    parameters=json.loads(parameters),
-                    keep_alive=keep_alive,
-                    tools=[Tool(**t) for t in json.loads(tools)],
-                    thinking=thinking,
-                )
-                for id, name, model, system, format, parameters, keep_alive, tools, thinking in chats
-            ]
+            return [_chat_from_row(row) for row in chats]
 
     async def get_chat(self, id: int) -> ChatModel | None:
         async with aiosqlite.connect(self.db_path) as connection:
             chat = await connection.execute_fetchall(
                 """
-                SELECT id, name, model, system, format, parameters, keep_alive, tools, thinking
+                SELECT id, name, model, system, provider, parameters, tools, thinking
                 FROM chat
                 WHERE id = :id;
                 """,
                 {"id": id},
             )
-            chat = next(iter(chat), None)
-            if chat:
-                (
-                    id,
-                    name,
-                    model,
-                    system,
-                    format,
-                    parameters,
-                    keep_alive,
-                    tools,
-                    thinking,
-                ) = chat
-                return ChatModel(
-                    id=id,
-                    name=name,
-                    model=model,
-                    system=system,
-                    format=format,
-                    parameters=json.loads(parameters),
-                    keep_alive=keep_alive,
-                    tools=[Tool(**t) for t in json.loads(tools)],
-                    thinking=thinking,
-                )
-            return None
+            row = next(iter(chat), None)
+            return _chat_from_row(row) if row else None
+
+    async def get_last_provider(self) -> str | None:
+        """Provider of the most recently created chat, or None when there are none."""
+        async with aiosqlite.connect(self.db_path) as connection:
+            res = await connection.execute(
+                """
+                SELECT provider
+                FROM chat
+                ORDER BY id DESC
+                LIMIT 1;
+                """
+            )
+            row = await res.fetchone()
+            return row[0] if row else None
 
     async def delete_chat(self, id: int) -> None:
         async with aiosqlite.connect(self.db_path) as connection:
@@ -213,6 +193,8 @@ class Store:
             await connection.commit()
 
     async def save_message(self, message_model: MessageModel) -> int:
+        # `INSERT OR REPLACE`: regenerate reuses an existing message id to
+        # overwrite; new messages pass `id=None`.
         async with aiosqlite.connect(self.db_path) as connection:
             res = await connection.execute_insert(
                 """

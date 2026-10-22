@@ -1,82 +1,102 @@
-## Installation
+# Installation
 
 !!! note
-    Ollama needs to be installed and running in order to use `oterm`. Please follow the [Ollama Installation Guide](https://github.com/ollama/ollama?tab=readme-ov-file#ollama).
+    `oterm` works with local and hosted LLM providers. For local models, point it at [Ollama](https://github.com/ollama/ollama?tab=readme-ov-file#ollama), [vLLM](https://docs.vllm.ai/), [LM Studio](https://lmstudio.ai/), [llama.cpp](https://github.com/ggml-org/llama.cpp), or any OpenAI-compatible runner. For hosted providers (OpenAI, Anthropic, Groq, …), set the relevant API key. See [Providers and API keys](app_config.md#providers-and-api-keys) and the [`openaiCompatible`](app_config.md#openaicompatible-custom-openai-compatible-endpoints) config block.
 
-Using `uvx`:
+=== "uvx"
 
-```bash
-uvx oterm
-```
+    ```bash
+    uvx oterm
+    ```
 
-Using `brew` for MacOS:
+=== "brew (macOS)"
 
-```bash
-brew install oterm
-```
+    ```bash
+    brew install oterm
+    ```
 
-!!! note
+=== "yay (Arch)"
 
-    Since version `0.13.1`, `oterm` is in the official `homebrew/core` repository. If you have installed `oterm` by tapping  `ggozad/formulas` you can now remove the tap and reinstall `oterm`.
+    Community package maintained by [Rafael Dominiquini](https://github.com/Dominiquini). May lag behind the latest release.
 
-Using `yay` (or any AUR helper) for Arch Linux, thanks goes to [Daniel Chesters](https://github.com/DanielChesters) for maintaining the package:
+    ```bash
+    yay -S oterm
+    ```
 
-```bash
-yay -S oterm
-```
+=== "nix-env (NixOS)"
 
-Using `nix-env` on NixOs, thanks goes to [Gaël James](https://github.com/gaelj) for maintaining the package:
+    Community package maintained by [Gaël James](https://github.com/gaelj). May lag behind the latest release.
 
-```bash
-nix-env -iA nixpkgs.oterm
-```
+    ```bash
+    nix-env -iA nixpkgs.oterm
+    ```
 
-Using `pip`:
+=== "pip"
 
-```bash
-pip install oterm
-```
+    ```bash
+    pip install oterm
+    ```
 
-Using `pkg` for FreeBSD, thanks goes to [Nicola Vitale](https://github.com/nivit) for maintaining the package:
+=== "pkg (FreeBSD)"
 
-```bash
-pkg install misc/py-oterm
-```
+    Community package maintained by [Nicola Vitale](https://github.com/nivit). May lag behind the latest release.
 
-Using [`x-cmd`](https://x-cmd.com/install/oterm):
+    ```bash
+    pkg install misc/py-oterm
+    ```
 
-```bash
-x install oterm
-```
+### Spoken responses
+
+The [`speak`](tools/index.md#capabilities) capability needs the `speak` extra, which brings in `piper-tts` (GPL-3.0):
+
+=== "uvx"
+
+    ```bash
+    uvx "oterm[speak]"
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install "oterm[speak]"
+    ```
 
 ## Updating oterm
 
-To update oterm to the latest version, you can use the same method you used for installation:
+Use the same package manager you installed with.
 
-Using `uvx`:
+=== "uvx"
 
-```bash
-uvx oterm@latest
-```
+    ```bash
+    uvx oterm@latest
+    ```
 
-Using `brew` for MacOS:
+=== "brew (macOS)"
 
-```bash
-brew upgrade oterm
-```
-Using 'yay' (or any AUR helper) for Arch Linux:
+    ```bash
+    brew upgrade oterm
+    ```
 
-```bash
-yay -Syu oterm
-```
-Using `pip`:
+=== "yay (Arch)"
 
-```bash
-pip install --upgrade oterm
-```
+    ```bash
+    yay -Syu oterm
+    ```
 
-Using `pkg` for FreeBSD:
+=== "nix-env (NixOS)"
 
-```bash
-pkg upgrade misc/py-oterm
-```
+    ```bash
+    nix-env -uA nixpkgs.oterm
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install --upgrade oterm
+    ```
+
+=== "pkg (FreeBSD)"
+
+    ```bash
+    pkg upgrade misc/py-oterm
+    ```

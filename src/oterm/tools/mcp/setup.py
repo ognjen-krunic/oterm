@@ -1,61 +1,144 @@
-from mcp import Tool as MCPTool
+import contextlib
+import re
+from typing import TypedDict
+
+from fastmcp.client.transports import StdioTransport
+from pydantic_ai.mcp import MCPToolset
 
 from oterm.config import appConfig
 from oterm.log import log
-from oterm.tools.mcp.client import MCPClient
-from oterm.tools.mcp.prompts import MCPPromptCallable
-from oterm.tools.mcp.tools import MCPToolCallable, mcp_tool_to_ollama_tool
-from oterm.types import PromptCall, ToolCall
+from oterm.tools import qualified_tool_name
+from oterm.tools.mcp.logging import log_handler
+from oterm.utils import expand_env_vars
 
-mcp_clients: list[MCPClient] = []
+# Subprocess env overrides that quiet common MCP server runtimes.
+_STDIO_LOG_ENV = {
+    "PYTHONUNBUFFERED": "0",
+    "LOGLEVEL": "ERROR",
+    "RUST_LOG": "error",
+    "FASTMCP_LOG_LEVEL": "ERROR",
+}
+
+# Providers accept tool names matching ^[a-zA-Z0-9_-]{1,64}$. A server's name
+# prefixes each of its tool names, so the charset applies to the name itself
+# and the length limit to the combination.
+_SERVER_NAME = re.compile(r"[a-zA-Z0-9_-]+")
+_TOOL_NAME_MAX_LENGTH = 64
 
 
-async def setup_mcp_servers() -> tuple[
-    dict[str, list[ToolCall]], dict[str, list[PromptCall]]
-]:
-    mcp_servers = appConfig.get("mcpServers")
-    tool_calls: dict[str, list[ToolCall]] = {}
-    prompt_calls: dict[str, list[PromptCall]] = {}
+class ToolMeta(TypedDict):
+    name: str
+    description: str
 
-    if mcp_servers:
-        for server, config in mcp_servers.items():
-            client = MCPClient(server, config)
-            await client.initialize()
-            if not client.client:
+
+mcp_servers: dict[str, MCPToolset] = {}
+mcp_tool_meta: dict[str, list[ToolMeta]] = {}
+_exit_stack: contextlib.AsyncExitStack | None = None
+
+
+def _build_toolset(name: str, entry: dict) -> MCPToolset:
+    """Build a single MCPToolset from an oterm `mcpServers` config entry.
+
+    Accepts either an HTTP shape (`url` / `headers`) or a stdio shape
+    (`command` / `args` / `env` / `cwd`). Rejects WebSocket URLs explicitly
+    so users get a clear error instead of a transport-layer failure.
+    """
+    if not _SERVER_NAME.fullmatch(name):
+        raise ValueError(
+            f"MCP server {name!r}: the name may only contain letters, digits, "
+            "underscores and hyphens, as it prefixes every tool name sent to "
+            "the model."
+        )
+    url = entry.get("url")
+    if isinstance(url, str):
+        if url.startswith(("ws://", "wss://")):
+            raise ValueError(
+                f"MCP server {name!r}: WebSocket transport is not supported. "
+                "Use HTTP (http:// or https://) transport instead."
+            )
+        return MCPToolset(
+            url,
+            id=name,
+            headers=entry.get("headers"),
+            log_handler=log_handler,
+        )
+    transport = StdioTransport(
+        command=entry["command"],
+        args=list(entry.get("args") or []),
+        env={**_STDIO_LOG_ENV, **(entry.get("env") or {})},
+        cwd=entry.get("cwd"),
+    )
+    return MCPToolset(transport, id=name, log_handler=log_handler)
+
+
+def _build_toolsets(raw: dict[str, dict]) -> dict[str, MCPToolset]:
+    """Build MCPToolsets from oterm's `mcpServers` config block.
+
+    Schema matches the Claude Desktop / pydantic-ai convention: each entry is
+    either an stdio shape (`command` / `args` / `env` / `cwd`) or an HTTP
+    shape (`url` / `headers`). URLs ending in `/sse` resolve to an SSE
+    transport automatically; other HTTP URLs use Streamable HTTP.
+    """
+    expanded = expand_env_vars(raw)
+    return {name: _build_toolset(name, entry) for name, entry in expanded.items()}
+
+
+async def setup_mcp_servers() -> dict[str, list[ToolMeta]]:
+    """Build, enter, and probe each configured MCP server.
+
+    Returns a registry of tool metadata per server name. The toolset instances
+    themselves are stored in module-global `mcp_servers` and kept entered for
+    the app lifetime via `_exit_stack`.
+    """
+    global _exit_stack
+    configured = appConfig.get("mcpServers") or {}
+    mcp_servers.clear()
+    mcp_tool_meta.clear()
+    _exit_stack = contextlib.AsyncExitStack()
+
+    try:
+        built = _build_toolsets(configured)
+    except ValueError as e:
+        log.error(f"MCP config rejected: {e}")
+        return mcp_tool_meta
+    except Exception as e:
+        log.error(f"MCP config could not be parsed: {e}")
+        return mcp_tool_meta
+
+    for name, toolset in built.items():
+        try:
+            await _exit_stack.enter_async_context(toolset)
+            tools = await toolset.list_tools()
+        except Exception as e:
+            log.error(f"MCP server {name!r} failed to initialize: {e}")
+            continue
+        metas: list[ToolMeta] = []
+        for tool in tools:
+            qualified = qualified_tool_name(name, tool.name)
+            if len(qualified) > _TOOL_NAME_MAX_LENGTH:
+                log.error(
+                    f"MCP server {name!r}: skipping tool {tool.name!r}, as "
+                    f"{qualified!r} is over the {_TOOL_NAME_MAX_LENGTH} character "
+                    "limit providers impose. Use a shorter server name."
+                )
                 continue
-            mcp_clients.append(client)
+            metas.append(ToolMeta(name=tool.name, description=tool.description or ""))
 
-            log.info(f"Initialized MCP server {server}")
+        mcp_servers[name] = toolset
+        mcp_tool_meta[name] = metas
+        log.info(f"Loaded MCP server {name} with {len(metas)} tool(s)")
 
-            mcp_tools: list[MCPTool] = await client.get_available_tools()
-            mcp_prompts = await client.get_available_prompts()
-
-            if mcp_tools:
-                tool_calls[server] = []
-            for mcp_tool in mcp_tools:
-                tool = mcp_tool_to_ollama_tool(mcp_tool)
-                mcpToolCallable = MCPToolCallable(mcp_tool.name, server, client)
-                tool_calls[server].append(
-                    {"tool": tool, "callable": mcpToolCallable.call}
-                )
-                log.info(f"Loaded MCP tool {mcp_tool.name} from {server}")
-
-            if mcp_prompts:
-                prompt_calls[server] = []
-
-            for prompt in mcp_prompts:
-                mcpPromptCallable = MCPPromptCallable(prompt.name, server, client)
-                prompt_calls[server].append(
-                    {"prompt": prompt, "callable": mcpPromptCallable.call}
-                )
-                log.info(f"Loaded MCP prompt {prompt.name} from {server}")
-
-    return tool_calls, prompt_calls
+    return mcp_tool_meta
 
 
-async def teardown_mcp_servers():
+async def teardown_mcp_servers() -> None:
+    global _exit_stack
+    if _exit_stack is None:  # pragma: no cover
+        return
     log.info("Tearing down MCP servers")
-    # Important to tear down in reverse order
-    mcp_clients.reverse()
-    for client in mcp_clients:
-        await client.teardown()
+    try:
+        await _exit_stack.aclose()
+    finally:
+        _exit_stack = None
+        mcp_servers.clear()
+        mcp_tool_meta.clear()
